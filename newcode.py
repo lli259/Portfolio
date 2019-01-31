@@ -17,7 +17,9 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import make_scorer
-
+from collections import Counter
+import warnings
+warnings.filterwarnings("ignore")
 
 plt.switch_backend('agg')
 
@@ -30,10 +32,14 @@ NORMALIZE=1
 Medium_diff=0
 
 def getError(y, y_):
-	print(str(-relative_score(y, y_))+"  /  "+str(-max_relative_score(y, y_))+"  /  "+str(mean_squared_error(y, y_)**0.5))
+	#print(str(-relative_score(y, y_))+"  /  "+str(-max_relative_score(y, y_))+"  /  "+str(mean_squared_error(y, y_)**0.5))
+	print(str(-relative_score(y, y_))+" /  "+str(mean_squared_error(y, y_)**0.5))
 
 def perSolvedandAveTime(p,l):
-	print(p,sum([1 if i<TIME_MAX-1 else 0 for i in l])/float(len(l))," / ",sum(l)/float(len(l)))
+	if not p=="":
+		print(p,sum([1 if i<TIME_MAX-1 else 0 for i in l])/float(len(l))," / ",sum(l)/float(len(l)))
+	else:
+		print(sum([1 if i<TIME_MAX-1 else 0 for i in l])/float(len(l))," / ",sum(l)/float(len(l)))
 	#pass
 
 def printportfolio(df3):
@@ -55,7 +61,7 @@ def printportfolio(df3):
 						timeForPred[i]=	df3[i][0]+2*fiexedRT
 
 	perSolvedandAveTime("portfolio",thirdruntime)
-
+	print("\n")
 
 def relative_score(y_true, y_pred):
 
@@ -349,18 +355,36 @@ runtimeIndex=[i for i in trainResult.columns if "runtime" in i]
 #kNN
 #porfolio predicted values
 
+def drawLine():
+	print(["--------"]*10)
+
+drawLine()
 print("trainSet")
 for alg in runtimeIndex:
-	perSolvedandAveTime(alg+"",trainResult[alg])
+	perSolvedandAveTime(alg.split("_")[1],trainResult[alg])
 print("oracle_portfolio")
 perSolvedandAveTime("",trainResult.Oracle_value.values)
 
 
 for mName in "DT,RF,kNN".split(","):
+	drawLine()
 	print(mName)
 	runtimeIndex=[i for i in trainResult.columns if "runtime" in i]
 	kNNsIndex=[i for i in trainResult.columns if mName in i]
 	kNNs=trainResult[runtimeIndex+kNNsIndex].copy()
+
+	#print("Error:relative_score / max_relative_score / mean_squared_error")
+	print("Error:relative_score / mean_squared_error")
+	for i in runtimeIndex:
+		print(i)
+		ytrue=kNNs[i].values
+		yp=kNNs[mName+"_"+i.split("_")[1]+"_pred"].values
+		getError(ytrue,yp)
+
+	#sort result get top3
+	#runtimeIndex=[i for i in trainResult.columns if "runtime" in i]
+	#kNNsIndex=[i for i in trainResult.columns if mName in i]
+	#kNNs=trainResult[runtimeIndex+kNNsIndex].copy()
 	kNNDf=kNNs[kNNsIndex].copy()
 	for i in kNNDf.columns.values:
 		kNNDf[i]=[(j,i)for j in kNNDf[i]]
@@ -377,6 +401,7 @@ for mName in "DT,RF,kNN".split(","):
 	kNNs["1st_ham"]=bestname
 	kNNs["1st_time"]=bestruntime
 	#getError(y, y_):
+	print("\n")
 	perSolvedandAveTime("1st",bestruntime)
 
 	secondpredname=[i[1][1] for i in kNNlist]
@@ -392,7 +417,40 @@ for mName in "DT,RF,kNN".split(","):
 	kNNs["3rd_ham"]=thirdname
 	kNNs["3rd_time"]=thirdruntime
 	perSolvedandAveTime("3rd",thirdruntime)
+	printportfolio(kNNs.loc[:,["1st_time","2nd_time","3rd_time"]].values)
 
+	accuracyDF=kNNs.loc[:,["1st_ham"]].copy()
+	#trainSet,validSet
+	Oracle_names=trainSet.Oracle_name.copy()
+	accuracyDF=accuracyDF.join(Oracle_names)
+	oredTop1=accuracyDF.loc[:,["1st_ham"]].values
+	Oracle_names=accuracyDF.Oracle_name.values
+	accResult=[1 if "runtime_"+Oracle_names[i] in oredTop1[i] else 0 for i in range(len(oredTop1))]
+	print("Top1Accuracy",sum(accResult)/len(accResult))
+	cnt=Counter()
+	for ws in Oracle_names:
+		cnt[ws]+=1
+	print ("oracle",cnt)
+	cnt=Counter()
+	#print(oredTop1)
+	for ws in oredTop1:
+		cnt[ws[0].split("_")[1]]+=1
+	print ("1st",cnt)
+	recalldic={}
+	for k in cnt:
+		recall=accuracyDF[accuracyDF["1st_ham"]==("runtime_"+k)]
+		recall=recall[recall.Oracle_name==k]
+		recalldic[k]=len(recall)
+	print("Recall",recalldic)
+
+	accuracyDF=kNNs.loc[:,["1st_ham","2nd_ham"]].copy()
+	#trainSet,validSet
+	Oracle_names=trainSet.Oracle_name.copy()
+	accuracyDF=accuracyDF.join(Oracle_names)
+	oredTop2=accuracyDF.loc[:,["1st_ham","2nd_ham"]].values
+	Oracle_names=accuracyDF.Oracle_name.values
+	accResult=[1 if "runtime_"+Oracle_names[i] in oredTop2[i] else 0 for i in range(len(oredTop2))]
+	print("Top2Accuracy",sum(accResult)/len(accResult))
 
 	accuracyDF=kNNs.loc[:,["1st_ham","2nd_ham","3rd_ham"]].copy()
 	#trainSet,validSet
@@ -401,12 +459,13 @@ for mName in "DT,RF,kNN".split(","):
 	oredTop3=accuracyDF.loc[:,["1st_ham","2nd_ham","3rd_ham"]].values
 	Oracle_names=accuracyDF.Oracle_name.values
 	accResult=[1 if "runtime_"+Oracle_names[i] in oredTop3[i] else 0 for i in range(len(oredTop3))]
-	print("Accuracy",sum(accResult)/len(accResult))
+	print("Top3Accuracy",sum(accResult)/len(accResult))
 
-	printportfolio(kNNs.loc[:,["1st_time","2nd_time","3rd_time"]].values)
+
+
 	kNNs.to_csv(("training_result_analysis_"+mName+".csv"))
-
-
+print("\n")
+drawLine()
 print("validSet")
 for alg in runtimeIndex:
 	perSolvedandAveTime(alg+"",validResult[alg])
@@ -414,10 +473,21 @@ print("oracle_portfolio")
 perSolvedandAveTime("",validResult.Oracle_value.values)
 
 for mName in "DT,RF,kNN".split(","):
+	drawLine()
 	print(mName)
 	runtimeIndex=[i for i in validResult.columns if "runtime" in i]
 	kNNsIndex=[i for i in validResult.columns if mName in i]
 	kNNs=validResult[runtimeIndex+kNNsIndex].copy()
+
+	print("Error:relative_score / mean_squared_error")
+	for i in runtimeIndex:
+		print(i)
+		ytrue=kNNs[i].values
+		yp=kNNs[mName+"_"+i.split("_")[1]+"_pred"].values
+		getError(ytrue,yp)
+	#runtimeIndex=[i for i in validResult.columns if "runtime" in i]
+	#kNNsIndex=[i for i in validResult.columns if mName in i]
+	#kNNs=validResult[runtimeIndex+kNNsIndex].copy()
 	kNNDf=kNNs[kNNsIndex].copy()
 	for i in kNNDf.columns.values:
 		kNNDf[i]=[(j,i)for j in kNNDf[i]]
@@ -434,6 +504,7 @@ for mName in "DT,RF,kNN".split(","):
 	kNNs["1st_ham"]=bestname
 	kNNs["1st_time"]=bestruntime
 	#getError(y, y_):
+	print("\n")
 	perSolvedandAveTime("1st",bestruntime)
 
 	secondpredname=[i[1][1] for i in kNNlist]
@@ -449,6 +520,41 @@ for mName in "DT,RF,kNN".split(","):
 	kNNs["3rd_ham"]=thirdname
 	kNNs["3rd_time"]=thirdruntime
 	perSolvedandAveTime("3rd",thirdruntime)
+	printportfolio(kNNs.loc[:,["1st_time","2nd_time","3rd_time"]].values)
+
+	accuracyDF=kNNs.loc[:,["1st_ham"]].copy()
+	#trainSet,validSet
+	Oracle_names=validSet.Oracle_name.copy()
+	accuracyDF=accuracyDF.join(Oracle_names)
+	oredTop1=accuracyDF.loc[:,["1st_ham"]].values
+	Oracle_names=accuracyDF.Oracle_name.values
+	accResult=[1 if "runtime_"+Oracle_names[i] in oredTop1[i] else 0 for i in range(len(oredTop1))]
+	print("Top1Accuracy",sum(accResult)/len(accResult))
+	cnt=Counter()
+	for ws in Oracle_names:
+		cnt[ws]+=1
+	print ("oracle",cnt)
+	cnt=Counter()
+	#print(oredTop1)
+	for ws in oredTop1:
+		cnt[ws[0].split("_")[1]]+=1
+	print ("1st",cnt)
+	recalldic={}
+	for k in cnt:
+		recall=accuracyDF[accuracyDF["1st_ham"]==("runtime_"+k)]
+		recall=recall[recall.Oracle_name==k]
+		recalldic[k]=len(recall)
+	print("Recall",recalldic)
+
+
+	accuracyDF=kNNs.loc[:,["1st_ham","2nd_ham"]].copy()
+	#trainSet,validSet
+	Oracle_names=validSet.Oracle_name.copy()
+	accuracyDF=accuracyDF.join(Oracle_names)
+	oredTop2=accuracyDF.loc[:,["1st_ham","2nd_ham"]].values
+	Oracle_names=accuracyDF.Oracle_name.values
+	accResult=[1 if "runtime_"+Oracle_names[i] in oredTop2[i] else 0 for i in range(len(oredTop2))]
+	print("Top2Accuracy",sum(accResult)/len(accResult))
 
 	accuracyDF=kNNs.loc[:,["1st_ham","2nd_ham","3rd_ham"]].copy()
 	#trainSet,validSet
@@ -457,11 +563,13 @@ for mName in "DT,RF,kNN".split(","):
 	oredTop3=accuracyDF.loc[:,["1st_ham","2nd_ham","3rd_ham"]].values
 	Oracle_names=accuracyDF.Oracle_name.values
 	accResult=[1 if "runtime_"+Oracle_names[i] in oredTop3[i] else 0 for i in range(len(oredTop3))]
-	print("Accuracy",sum(accResult)/len(accResult))
+	print("Top3Accuracy",sum(accResult)/len(accResult))
 
-	printportfolio(kNNs.loc[:,["1st_time","2nd_time","3rd_time"]].values)
+
 	kNNs.to_csv(("validition_result_analysis_"+mName+".csv"))
 
+print("\n")
+drawLine()
 print("testSet")
 for alg in runtimeIndex:
 	perSolvedandAveTime(alg+"",testResult[alg])
@@ -469,10 +577,21 @@ print("oracle_portfolio")
 perSolvedandAveTime("",testResult.Oracle_value.values)
 
 for mName in "DT,RF,kNN".split(","):
+	drawLine()
 	print(mName)
 	runtimeIndex=[i for i in testResult.columns if "runtime" in i]
 	kNNsIndex=[i for i in testResult.columns if mName in i]
 	kNNs=testResult[runtimeIndex+kNNsIndex].copy()
+
+	print("Error:relative_score / mean_squared_error")
+	for i in runtimeIndex:
+		print(i)
+		ytrue=kNNs[i].values
+		yp=kNNs[mName+"_"+i.split("_")[1]+"_pred"].values
+		getError(ytrue,yp)
+	#runtimeIndex=[i for i in testResult.columns if "runtime" in i]
+	#kNNsIndex=[i for i in testResult.columns if mName in i]
+	#kNNs=testResult[runtimeIndex+kNNsIndex].copy()
 	kNNDf=kNNs[kNNsIndex].copy()
 	for i in kNNDf.columns.values:
 		kNNDf[i]=[(j,i)for j in kNNDf[i]]
@@ -489,6 +608,7 @@ for mName in "DT,RF,kNN".split(","):
 	kNNs["1st_ham"]=bestname
 	kNNs["1st_time"]=bestruntime
 	#getError(y, y_):
+	print("\n")
 	perSolvedandAveTime("1st",bestruntime)
 
 	secondpredname=[i[1][1] for i in kNNlist]
@@ -504,6 +624,42 @@ for mName in "DT,RF,kNN".split(","):
 	kNNs["3rd_ham"]=thirdname
 	kNNs["3rd_time"]=thirdruntime
 	perSolvedandAveTime("3rd",thirdruntime)
+	printportfolio(kNNs.loc[:,["1st_time","2nd_time","3rd_time"]].values)
+
+	accuracyDF=kNNs.loc[:,["1st_ham"]].copy()
+	#trainSet,validSet
+	Oracle_names=testSet.Oracle_name.copy()
+	accuracyDF=accuracyDF.join(Oracle_names)
+	oredTop1=accuracyDF.loc[:,["1st_ham"]].values
+	Oracle_names=accuracyDF.Oracle_name.values
+	accResult=[1 if "runtime_"+Oracle_names[i] in oredTop1[i] else 0 for i in range(len(oredTop1))]
+
+	print("Top1Accuracy",sum(accResult)/len(accResult))
+	cnt=Counter()
+	for ws in Oracle_names:
+		cnt[ws]+=1
+	print ("oracle",cnt)
+	cnt=Counter()
+	#print(oredTop1)
+	for ws in oredTop1:
+		cnt[ws[0].split("_")[1]]+=1
+	print ("1st",cnt)
+	recalldic={}
+	for k in cnt:
+		recall=accuracyDF[accuracyDF["1st_ham"]==("runtime_"+k)]
+		recall=recall[recall.Oracle_name==k]
+		recalldic[k]=len(recall)
+	print("Recall",recalldic)
+
+
+	accuracyDF=kNNs.loc[:,["1st_ham","2nd_ham"]].copy()
+	#trainSet,validSet
+	Oracle_names=testSet.Oracle_name.copy()
+	accuracyDF=accuracyDF.join(Oracle_names)
+	oredTop2=accuracyDF.loc[:,["1st_ham","2nd_ham"]].values
+	Oracle_names=accuracyDF.Oracle_name.values
+	accResult=[1 if "runtime_"+Oracle_names[i] in oredTop2[i] else 0 for i in range(len(oredTop2))]
+	print("Top2Accuracy",sum(accResult)/len(accResult))
 
 	accuracyDF=kNNs.loc[:,["1st_ham","2nd_ham","3rd_ham"]].copy()
 	#trainSet,validSet
@@ -512,6 +668,6 @@ for mName in "DT,RF,kNN".split(","):
 	oredTop3=accuracyDF.loc[:,["1st_ham","2nd_ham","3rd_ham"]].values
 	Oracle_names=accuracyDF.Oracle_name.values
 	accResult=[1 if "runtime_"+Oracle_names[i] in oredTop3[i] else 0 for i in range(len(oredTop3))]
-	print("Accuracy",sum(accResult)/len(accResult))
-	printportfolio(kNNs.loc[:,["1st_time","2nd_time","3rd_time"]].values)
+	print("Top3Accuracy",sum(accResult)/len(accResult))
+
 	kNNs.to_csv(("testing_result_analysis_"+mName+".csv"))
